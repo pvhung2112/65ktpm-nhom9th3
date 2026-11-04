@@ -102,3 +102,4 @@ flutter run -d chrome
 4. **Kiểm tra Testing Lab (Checklist 7)**:
    - Chuyển sang tab **Testing Lab** ở thanh điều hướng dưới.
    - Bấm "Chạy kiểm thử toàn bộ Benchmark" để xem hệ thống AI phân tích tự động 4 mẫu giọng thực tế.
+
