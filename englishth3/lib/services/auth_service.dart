@@ -8,25 +8,34 @@ class AuthService extends ChangeNotifier {
 
   final FirebaseAuth _auth = FirebaseAuth.instance;
 
+  Map<String, String>? _mockUser;
+
   User? get currentUser => _auth.currentUser;
   bool get isAuthenticated => currentUser != null || _mockUser != null;
 
-  // Hỗ trợ Mock User phục vụ chấm điểm & kiểm thử tức thì (Checklist 7)
-  Map<String, String>? _mockUser;
-  Map<String, String>? get mockUser => _mockUser;
-
   String get userUid => _mockUser != null ? _mockUser!['uid']! : (_auth.currentUser?.uid ?? 'guest_uid');
-  String get userEmail => _mockUser != null ? _mockUser!['email']! : (_auth.currentUser?.email ?? 'hocvien@english.edu.vn');
-  String get userDisplayName => _mockUser != null ? _mockUser!['name']! : (_auth.currentUser?.displayName ?? 'Học viên');
+  String get userEmail => _mockUser != null ? _mockUser!['email']! : (_auth.currentUser?.email ?? 'guest@english.edu.vn');
+  String get userDisplayName =>
+      _mockUser != null ? _mockUser!['name']! : (_auth.currentUser?.displayName ?? (_auth.currentUser?.email?.split('@').first ?? 'Học viên'));
 
-  /// Đăng nhập bằng Email & Mật khẩu qua Firebase
+  /// Đăng nhập bằng Email & Mật khẩu qua Firebase (bắt buộc đúng 100% email & mật khẩu)
   Future<String?> signIn(String email, String password) async {
+    _mockUser = null;
     try {
-      _mockUser = null;
-      await _auth.signInWithEmailAndPassword(email: email, password: password);
+      await _auth.signInWithEmailAndPassword(
+        email: email.trim(),
+        password: password.trim(),
+      );
       notifyListeners();
       return null;
     } on FirebaseAuthException catch (e) {
+      if (e.code == 'user-not-found') {
+        return 'Tài khoản không tồn tại. Vui lòng bấm "Chưa có tài khoản? Đăng ký mới" bên dưới!';
+      } else if (e.code == 'wrong-password' || e.code == 'invalid-credential') {
+        return 'Mật khẩu không chính xác hoặc thông tin đăng nhập không hợp lệ!';
+      } else if (e.code == 'invalid-email') {
+        return 'Định dạng email không hợp lệ!';
+      }
       return e.message ?? 'Đăng nhập thất bại';
     } catch (e) {
       return e.toString();
@@ -35,30 +44,28 @@ class AuthService extends ChangeNotifier {
 
   /// Đăng ký tài khoản mới qua Firebase
   Future<String?> signUp(String email, String password, String displayName) async {
+    _mockUser = null;
     try {
-      _mockUser = null;
       UserCredential cred = await _auth.createUserWithEmailAndPassword(
-        email: email,
-        password: password,
+        email: email.trim(),
+        password: password.trim(),
       );
-      await cred.user?.updateDisplayName(displayName);
+      await cred.user?.updateDisplayName(displayName.trim());
       notifyListeners();
       return null;
     } on FirebaseAuthException catch (e) {
+      if (e.code == 'email-already-in-use') {
+        return 'Email này đã được đăng ký. Vui lòng chuyển sang Đăng nhập!';
+      } else if (e.code == 'weak-password') {
+        return 'Mật khẩu quá ngắn, vui lòng nhập ít nhất 6 ký tự!';
+      }
       return e.message ?? 'Đăng ký thất bại';
     } catch (e) {
       return e.toString();
     }
   }
 
-  /// Đăng xuất
-  Future<void> signOut() async {
-    _mockUser = null;
-    await _auth.signOut();
-    notifyListeners();
-  }
-
-  /// Chuyển đổi nhanh các tài khoản kiểm thử mẫu (Checklist 7)
+  /// Đổi user kiểm thử trong Testing Lab (dành cho mục 7 nghiệm thu)
   void switchMockAccount(String uid, String name, String email) {
     _mockUser = {
       'uid': uid,
@@ -67,5 +74,11 @@ class AuthService extends ChangeNotifier {
     };
     notifyListeners();
   }
-}
 
+  /// Đăng xuất
+  Future<void> signOut() async {
+    _mockUser = null;
+    await _auth.signOut();
+    notifyListeners();
+  }
+}

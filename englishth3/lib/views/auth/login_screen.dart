@@ -11,9 +11,9 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  final _emailCtrl = TextEditingController(text: 'student@english.edu.vn');
+  final _emailCtrl = TextEditingController(text: 'an@test.com');
   final _passCtrl = TextEditingController(text: '123456');
-  final _nameCtrl = TextEditingController(text: 'Nguyễn Văn An');
+  final _nameCtrl = TextEditingController();
   bool _isSignUp = false;
   bool _isLoading = false;
   String? _errorMessage;
@@ -47,11 +47,6 @@ class _LoginScreenState extends State<LoginScreen> {
     } else {
       setState(() => _errorMessage = error);
     }
-  }
-
-  void _loginQuickAccount(String uid, String name, String email) {
-    _auth.switchMockAccount(uid, name, email);
-    widget.onLoginSuccess();
   }
 
   @override
@@ -164,39 +159,33 @@ class _LoginScreenState extends State<LoginScreen> {
                       onPressed: () => setState(() => _isSignUp = !_isSignUp),
                       child: Text(
                         _isSignUp ? 'Đã có tài khoản? Đăng nhập ngay' : 'Chưa có tài khoản? Đăng ký mới',
-                        style: const TextStyle(color: Color(0xFF4F46E5)),
+                        style: const TextStyle(color: Color(0xFF4F46E5), fontWeight: FontWeight.w600),
                       ),
                     ),
 
-                    const Divider(height: 32),
-
-                    // Đăng nhập nhanh tài khoản kiểm thử (Checklist 7)
-                    const Text(
-                      'Tài khoản kiểm thử nghiệm thu (Checklist 7):',
-                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Colors.grey),
-                    ),
-                    const SizedBox(height: 12),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      alignment: WrapAlignment.center,
-                      children: [
-                        ActionChip(
-                          avatar: const Text('🔥1'),
-                          label: const Text('Nguyễn An (Mới)'),
-                          onPressed: () => _loginQuickAccount('user_an_01', 'Nguyễn Văn An', 'an@test.com'),
-                        ),
-                        ActionChip(
-                          avatar: const Text('🔥7'),
-                          label: const Text('Trần Bình (7 ngày)'),
-                          onPressed: () => _loginQuickAccount('user_binh_02', 'Trần Thị Bình', 'binh@test.com'),
-                        ),
-                        ActionChip(
-                          avatar: const Text('🔥21'),
-                          label: const Text('Lê Cường (21 ngày)'),
-                          onPressed: () => _loginQuickAccount('user_cuong_03', 'Lê Hoàng Cường', 'cuong@test.com'),
-                        ),
-                      ],
+                    const SizedBox(height: 16),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF4F46E5).withOpacity(0.06),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: const Color(0xFF4F46E5).withOpacity(0.15)),
+                      ),
+                      child: const Column(
+                        children: [
+                          Text(
+                            'Tài khoản đăng nhập mẫu sẵn có:',
+                            style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF4F46E5)),
+                          ),
+                          SizedBox(height: 4),
+                          Text(
+                            'Email: an@test.com  |  Mật khẩu: 123456\n(Hoặc bấm "Đăng ký mới" để tạo tài khoản thật của bạn)',
+                            style: TextStyle(fontSize: 11, color: Color(0xFF475569)),
+                            textAlign: TextAlign.center,
+                          ),
+                        ],
+                      ),
                     ),
                   ],
                 ),
