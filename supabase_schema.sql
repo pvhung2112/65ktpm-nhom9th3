@@ -88,15 +88,25 @@ ALTER TABLE public.practice_histories ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.phoneme_analyses ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.reminder_settings ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "Allow public read lessons" ON public.lessons FOR SELECT USING (true);
+CREATE POLICY "Allow all on lessons" ON public.lessons FOR ALL USING (true);
 CREATE POLICY "Allow all on profiles" ON public.profiles FOR ALL USING (true);
 CREATE POLICY "Allow all on daily_goals" ON public.daily_goals FOR ALL USING (true);
 CREATE POLICY "Allow all on practice_histories" ON public.practice_histories FOR ALL USING (true);
 CREATE POLICY "Allow all on phoneme_analyses" ON public.phoneme_analyses FOR ALL USING (true);
 CREATE POLICY "Allow all on reminder_settings" ON public.reminder_settings FOR ALL USING (true);
 
--- SEED DỮ LIỆU BÀI HỌC MẪU (20 CÂU TỪ CƠ BẢN ĐẾN THỬ THÁCH PHÁT ÂM)
+-- SEED DỮ LIỆU BÀI HỌC MẪU (TỪ VỰNG NGẮN & CÂU GIAO TIẾP TỪ CƠ BẢN ĐẾN THỬ THÁCH)
 INSERT INTO public.lessons (title, category, difficulty, target_sentence, standard_ipa, target_focus_phonemes, audio_native_url) VALUES
+('Từ vựng: Xin chào', 'Vocabulary', 'Beginner', 'Hello', '/həˈloʊ/', '/h/, /oʊ/', ''),
+('Từ vựng: Số ba (Âm /θ/)', 'Vocabulary', 'Beginner', 'Three', '/θriː/', '/θ/, /r/', ''),
+('Từ vựng: Cảm ơn', 'Vocabulary', 'Beginner', 'Thank you', '/ˈθæŋk juː/', '/θ/, /ŋ/', ''),
+('Từ vựng: Quả táo', 'Vocabulary', 'Beginner', 'Apple', '/ˈæpəl/', '/æ/, /p/, /l/', ''),
+('Từ vựng: Nước uống', 'Vocabulary', 'Beginner', 'Water', '/ˈwɔːtər/', '/w/, /t/', ''),
+('Từ vựng: Cà phê', 'Vocabulary', 'Beginner', 'Coffee', '/ˈkɔːfi/', '/k/, /f/', ''),
+('Từ vựng: Chào buổi sáng', 'Vocabulary', 'Beginner', 'Good morning', '/ɡʊd ˈmɔːrnɪŋ/', '/ɡ/, /ʊ/, /ŋ/', ''),
+('Từ vựng: Tạm biệt', 'Vocabulary', 'Beginner', 'Goodbye', '/ɡʊdˈbaɪ/', '/d/, /aɪ/', ''),
+('Từ vựng: Âm nhạc', 'Vocabulary', 'Beginner', 'Music', '/ˈmjuːzɪk/', '/z/, /k/', ''),
+('Từ vựng: Gia đình', 'Vocabulary', 'Beginner', 'Family', '/ˈfæməli/', '/f/, /æ/, /l/', ''),
 ('Giao tiếp hàng ngày 1', 'Daily Life', 'Beginner', 'I think that is right.', '/aɪ θɪŋk ðæt ɪz raɪt/', '/θ/, /ð/', ''),
 ('Giao tiếp hàng ngày 2', 'Daily Life', 'Beginner', 'Thank you very much for your help.', '/θæŋk juː ˈveri mʌtʃ fɔːr jɔːr help/', '/θ/, /tʃ/', ''),
 ('Cặp âm tối thiểu /θ/ và /s/', 'Minimal Pairs', 'Intermediate', 'Think and sink are different words.', '/θɪŋk ænd sɪŋk ɑːr ˈdɪfrənt wɜːrdz/', '/θ/, /s/', ''),
