@@ -13,48 +13,98 @@ class ScoreCircle extends StatelessWidget {
   });
 
   Color _getScoreColor(double s) {
-    if (s >= 80) return const Color(0xFF10B981); // Xanh lá
-    if (s >= 50) return const Color(0xFFF59E0B); // Vàng
-    return const Color(0xFFEF4444); // Đỏ
+    if (s >= 80) return const Color(0xFF10B981); // Xanh lá: Xuất sắc
+    if (s >= 50) return const Color(0xFFF59E0B); // Vàng cam: Khá/Trung bình
+    return const Color(0xFFEF4444); // Đỏ: Cần cải thiện
   }
 
   @override
   Widget build(BuildContext context) {
     final color = _getScoreColor(score);
+    final clampedScore = score.clamp(0.0, 100.0);
+
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Stack(
-          alignment: Alignment.center,
-          children: [
-            SizedBox(
+        TweenAnimationBuilder<double>(
+          tween: Tween<double>(begin: 0.0, end: clampedScore),
+          duration: const Duration(milliseconds: 900),
+          curve: Curves.easeOutCubic,
+          builder: (context, animatedValue, child) {
+            return Container(
               width: size,
               height: size,
-              child: CircularProgressIndicator(
-                value: score / 100,
-                strokeWidth: 8,
-                backgroundColor: color.withOpacity(0.15),
-                valueColor: AlwaysStoppedAnimation<Color>(color),
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: Colors.white,
+                boxShadow: [
+                  BoxShadow(
+                    color: color.withOpacity(0.18),
+                    blurRadius: 14,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
               ),
-            ),
-            Text(
-              '${score.toInt()}',
-              style: TextStyle(
-                fontSize: size * 0.32,
-                fontWeight: FontWeight.bold,
-                color: color,
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  // Vòng tiến độ xoay tròn mềm mại
+                  SizedBox(
+                    width: size,
+                    height: size,
+                    child: CircularProgressIndicator(
+                      value: animatedValue / 100.0,
+                      strokeWidth: size * 0.09,
+                      strokeCap: StrokeCap.round,
+                      backgroundColor: color.withOpacity(0.12),
+                      valueColor: AlwaysStoppedAnimation<Color>(color),
+                    ),
+                  ),
+                  // Điểm số trung tâm
+                  Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        '${animatedValue.toInt()}',
+                        style: TextStyle(
+                          fontSize: size * 0.30,
+                          fontWeight: FontWeight.w800,
+                          color: color,
+                          letterSpacing: -0.5,
+                          height: 1.0,
+                        ),
+                      ),
+                      Text(
+                        'pts',
+                        style: TextStyle(
+                          fontSize: size * 0.12,
+                          fontWeight: FontWeight.w600,
+                          color: color.withOpacity(0.75),
+                          height: 1.1,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
               ),
-            ),
-          ],
+            );
+          },
         ),
         if (label.isNotEmpty) ...[
-          const SizedBox(height: 6),
-          Text(
-            label,
-            style: const TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w500,
-              color: Colors.grey,
+          const SizedBox(height: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+            decoration: BoxDecoration(
+              color: color.withOpacity(0.08),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Text(
+              label,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: const Color(0xFF475569),
+              ),
             ),
           ),
         ]
@@ -103,4 +153,3 @@ class StreakBadge extends StatelessWidget {
     );
   }
 }
-

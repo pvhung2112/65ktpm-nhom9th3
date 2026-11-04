@@ -540,7 +540,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   crossAxisCount: isWide ? 3 : 2,
                   crossAxisSpacing: 14,
                   mainAxisSpacing: 14,
-                  mainAxisExtent: 195,
+                  mainAxisExtent: 220,
                 ),
                 itemBuilder: (ctx, i) => _buildLessonGridCard(paged[i]),
               );
@@ -585,7 +585,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       elevation: 2,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -610,8 +610,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   ),
                 ),
                 IconButton(
-                  icon: const Icon(Icons.volume_up, color: Color(0xFF4F46E5), size: 20),
+                  icon: const Icon(Icons.volume_up, color: Color(0xFF4F46E5), size: 18),
                   tooltip: 'Nghe phát âm bản xứ',
+                  visualDensity: VisualDensity.compact,
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                  splashRadius: 18,
                   onPressed: () {
                     TtsService().speakNative(lesson.targetSentence);
                   },
@@ -623,9 +627,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
             Text(
               lesson.targetSentence,
               style: const TextStyle(
-                fontSize: 17,
+                fontSize: 16,
                 fontWeight: FontWeight.bold,
                 color: Color(0xFF1E293B),
+                height: 1.25,
               ),
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
