@@ -15,7 +15,9 @@ WHISPER_HALLUCINATIONS = {
     "thank you very much.", "thank you so much.",
     "subtitles by", "subtitles by...", "subtitles by the amara.org community",
     "you", "bye.", "bye", "goodbye.", "...", ".", "yes.", "no.",
-    "so", "um", "uh", "ah", "hmm"
+    "so", "um", "uh", "ah", "hmm",
+    "do it with", "do it with.", "do it all", "do it all.", "do it",
+    "so that's it", "so that's it.", "that's it"
 }
 
 def is_hallucination(text: str) -> bool:
@@ -44,6 +46,9 @@ def is_hallucination(text: str) -> bool:
         r"watching this video",
         r"thank you.*thank you",  # Lặp từ do nhiễu
         r"bye bye.*bye",
+        r"do it with",
+        r"do it all",
+        r"middle of my head",
     ]
     for pattern in hallucination_patterns:
         if re.search(pattern, t_clean):

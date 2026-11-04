@@ -119,8 +119,12 @@
               };
 
               source.connect(proc);
-              proc.connect(ctx.destination);
-              console.log("[RealtimeAudio] Direct PCM 16kHz audio stream active with resampler!");
+              // Tạo mute gain để trình duyệt cho phép ScriptProcessor chạy mà không dội tiếng mic ra loa
+              var muteGain = ctx.createGain();
+              muteGain.gain.value = 0;
+              proc.connect(muteGain);
+              muteGain.connect(ctx.destination);
+              console.log("[RealtimeAudio] Direct PCM 16kHz audio stream active with resampler and echo muting!");
             }).catch(function(err) {
               console.error("[RealtimeAudio] getUserMedia error:", err);
               if (onError) onError(err.toString());

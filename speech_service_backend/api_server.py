@@ -171,6 +171,15 @@ async def websocket_audio_stream(websocket: WebSocket):
     last_transcribed_len = 0
     last_interim_text = ""
     
+    def _trim_silence(audio: np.ndarray, threshold: float = 0.020):
+        frame_size = 320 # 20ms
+        voiced = [i for i in range(0, len(audio) - frame_size, frame_size) if np.sqrt(np.mean(audio[i:i+frame_size] ** 2)) >= threshold]
+        if not voiced:
+            return None
+        start = max(0, int(voiced[0] - 16000 * 0.2))
+        end = min(len(audio), int(voiced[-1] + frame_size + 16000 * 0.2))
+        return audio[start:end]
+
     async def transcribe_interim(buffer_snapshot: bytes):
         nonlocal is_transcribing, last_interim_text
         if is_transcribing or len(buffer_snapshot) < 4000:
@@ -178,40 +187,35 @@ async def websocket_audio_stream(websocket: WebSocket):
         is_transcribing = True
         try:
             audio_np = np.frombuffer(buffer_snapshot, dtype=np.int16).astype(np.float32) / 32768.0
-            total_rms = float(np.sqrt(np.mean(audio_np ** 2)))
             
-            # Lọc tạp âm nền: Nếu toàn bộ âm thanh chưa vượt qua 0.012 (nhiễu phòng/quạt), bỏ qua
-            if total_rms < 0.012:
-                return
-            
-            # Kiểm tra 1 giây gần nhất:
-            recent_samples = int(16000 * 1.0)
-            recent_slice = audio_np[-recent_samples:] if len(audio_np) > recent_samples else audio_np
-            recent_rms = float(np.sqrt(np.mean(recent_slice ** 2)))
-            if recent_rms < 0.010 and last_interim_text:
-                # Đang im lặng tạm thời sau khi đã nhận diện được từ -> Không cần gọi lại Whisper
+            # Cắt lọc chỉ lấy phần âm thanh thực sự có tiếng nói (bỏ qua toàn bộ im lặng/tiếng quạt)
+            clean_audio = _trim_silence(audio_np, threshold=0.020)
+            if clean_audio is None or len(clean_audio) < 3200:
+                # Không có tiếng nói người thật -> Không gọi Whisper
                 return
             
             def _run():
                 model = get_whisper_model()
-                # Không đưa câu mẫu vào prompt để AI chỉ nhận diện đúng 100% âm thanh thực tế người dùng nói
                 segments, _ = model.transcribe(
-                    audio_np,
+                    clean_audio,
                     beam_size=2,
+                    temperature=0.0,
                     language="en",
                     without_timestamps=True,
-                    vad_filter=True, # BẬT VAD ĐỂ LỌC TIẾNG ỒN VÀ TIẾNG THỞ
+                    vad_filter=True,
                     vad_parameters=dict(
                         threshold=0.5,
-                        min_speech_duration_ms=200,
+                        min_speech_duration_ms=250,
                         min_silence_duration_ms=400,
-                        speech_pad_ms=100
+                        speech_pad_ms=150
                     ),
                     initial_prompt=None,
                     repetition_penalty=1.2,
                     no_repeat_ngram_size=3,
                     condition_on_previous_text=False,
-                    no_speech_threshold=0.6
+                    no_speech_threshold=0.5,
+                    compression_ratio_threshold=2.2,
+                    log_prob_threshold=-1.0
                 )
                 raw = " ".join([s.text for s in segments]).strip()
                 if not raw or is_hallucination(raw):
@@ -223,14 +227,14 @@ async def websocket_audio_stream(websocket: WebSocket):
             
             interim_text = await asyncio.to_thread(_run)
             if interim_text and not is_hallucination(interim_text):
-                print(f"[WebSocket Live]: '{interim_text}'")
+                print(f"[WebSocket Live]: '{interim_text}'", flush=True)
                 last_interim_text = interim_text
                 await websocket.send_json({
                     "type": "interim",
                     "text": interim_text
                 })
         except Exception as e:
-            print(f"[WebSocket Interim Error]: {e}")
+            print(f"[WebSocket Interim Error]: {e}", flush=True)
         finally:
             is_transcribing = False
 
@@ -276,26 +280,29 @@ async def websocket_audio_stream(websocket: WebSocket):
     if len(pcm_buffer) >= 3200:
         try:
             audio_np = np.frombuffer(pcm_buffer, dtype=np.int16).astype(np.float32) / 32768.0
-            rms = float(np.sqrt(np.mean(audio_np ** 2)))
-            if rms >= 0.012:
+            clean_final = _trim_silence(audio_np, threshold=0.018)
+            if clean_final is not None and len(clean_final) >= 3200:
                 def _final_run():
                     model = get_whisper_model()
                     segments, _ = model.transcribe(
-                        audio_np,
+                        clean_final,
                         beam_size=3,
+                        temperature=0.0,
                         language="en",
                         vad_filter=True,
                         vad_parameters=dict(
                             threshold=0.5,
-                            min_speech_duration_ms=200,
+                            min_speech_duration_ms=250,
                             min_silence_duration_ms=400,
-                            speech_pad_ms=100
+                            speech_pad_ms=150
                         ),
                         initial_prompt=None,
                         repetition_penalty=1.2,
                         no_repeat_ngram_size=3,
                         condition_on_previous_text=False,
-                        no_speech_threshold=0.6
+                        no_speech_threshold=0.5,
+                        compression_ratio_threshold=2.2,
+                        log_prob_threshold=-1.0
                     )
                     raw = " ".join([s.text for s in segments]).strip()
                     if is_hallucination(raw):
@@ -303,7 +310,7 @@ async def websocket_audio_stream(websocket: WebSocket):
                     return normalize_text_for_phonemes(raw)
                 final_text = await asyncio.to_thread(_final_run)
         except Exception as e:
-            print(f"[WebSocket] Final transcribe error: {e}")
+            print(f"[WebSocket] Final transcribe error: {e}", flush=True)
             
     # Đảm bảo không bao giờ bị mất từ đã tích lũy trong lúc nói
     if not final_text or len(final_text.strip()) < len(last_interim_text.strip()):

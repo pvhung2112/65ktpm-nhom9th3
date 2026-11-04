@@ -47,11 +47,14 @@ def transcribe_audio_file(file_path: str) -> dict:
         beam_size=5,
         word_timestamps=True,
         vad_filter=True,  # Tự động lọc tiếng ồn nền
+        temperature=0.0,
         initial_prompt=None,
         repetition_penalty=1.2,
         no_repeat_ngram_size=3,
         condition_on_previous_text=False,
-        no_speech_threshold=0.5
+        no_speech_threshold=0.5,
+        compression_ratio_threshold=2.2,
+        log_prob_threshold=-1.0
     )
     
     full_text_list = []
