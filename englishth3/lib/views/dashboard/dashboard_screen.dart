@@ -1,3 +1,4 @@
+import 'dart:math';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import '../../models/lesson.dart';
@@ -27,6 +28,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
   UserProfile? _profile;
   List<Lesson> _lessons = [];
   List<PracticeHistory> _histories = [];
+  Map<String, int> _todayGoal = {
+    'practiced_minutes': 0,
+    'target_minutes': 15,
+    'practiced_sentences': 0,
+    'target_sentences': 5,
+  };
+  List<double> _weeklyMinutes = List.filled(7, 0.0);
   bool _isLoading = true;
 
   @override
@@ -45,13 +53,23 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
     final lessons = await _supabase.getLessons();
     final histories = await _supabase.getRecentHistories(_auth.userUid);
+    final todayGoal = await _supabase.getTodayGoal(
+      _auth.userUid,
+      defaultTargetMinutes: profile.dailyTargetMinutes,
+      defaultTargetSentences: profile.dailyTargetSentences,
+    );
+    final weeklyMinutes = await _supabase.getWeeklyStudyMinutes(_auth.userUid);
 
-    setState(() {
-      _profile = profile;
-      _lessons = lessons;
-      _histories = histories;
-      _isLoading = false;
-    });
+    if (mounted) {
+      setState(() {
+        _profile = profile;
+        _lessons = lessons;
+        _histories = histories;
+        _todayGoal = todayGoal;
+        _weeklyMinutes = weeklyMinutes;
+        _isLoading = false;
+      });
+    }
   }
 
   void _triggerReminderTest() {
@@ -172,15 +190,36 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 ),
                 const SizedBox(height: 28),
 
-                // Lịch sử luyện tập gần đây
-                if (_histories.isNotEmpty) ...[
-                  const Text(
-                    'Lịch Sử Luyện Tập Gần Đây (Lưu Supabase)',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF1E293B)),
+                // Lịch sử luyện tập gần đây (Lưu Supabase)
+                const Text(
+                  'Lịch Sử Luyện Tập Gần Đây (Lưu Supabase)',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF1E293B)),
+                ),
+                const SizedBox(height: 12),
+                if (_histories.isNotEmpty)
+                  ...(_histories.map((h) => _buildHistoryItem(h)).toList())
+                else
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: Colors.grey.withOpacity(0.2)),
+                    ),
+                    child: const Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.history_toggle_off, color: Colors.grey, size: 22),
+                        SizedBox(width: 8),
+                        Text(
+                          'Tài khoản này chưa có lịch sử luyện tập nào trên CSDL.\nHãy bấm "Luyện nói" ở trên để ghi nhận bài học đầu tiên!',
+                          style: TextStyle(color: Colors.grey, fontSize: 13),
+                          textAlign: TextAlign.center,
+                        ),
+                      ],
+                    ),
                   ),
-                  const SizedBox(height: 12),
-                  ...(_histories.map((h) => _buildHistoryItem(h)).toList()),
-                ]
               ],
             ),
           ),
@@ -190,9 +229,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Widget _buildDailyGoalCard() {
-    const practicedMinutes = 10;
-    const targetMinutes = 15;
-    const percent = practicedMinutes / targetMinutes;
+    final practicedMinutes = _todayGoal['practiced_minutes'] ?? 0;
+    final targetMinutes = _todayGoal['target_minutes'] ?? 15;
+    final practicedSentences = _todayGoal['practiced_sentences'] ?? 0;
+    final targetSentences = _todayGoal['target_sentences'] ?? 5;
+    final percent = targetMinutes > 0 ? (practicedMinutes / targetMinutes).clamp(0.0, 1.0) : 0.0;
+    final isDone = practicedSentences >= targetSentences && practicedMinutes >= targetMinutes;
 
     return Card(
       elevation: 2,
@@ -211,12 +253,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     value: percent,
                     strokeWidth: 7,
                     backgroundColor: Colors.indigo.withOpacity(0.1),
-                    valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF4F46E5)),
+                    valueColor: AlwaysStoppedAnimation<Color>(
+                      isDone ? Colors.green : const Color(0xFF4F46E5),
+                    ),
                   ),
                 ),
                 Text(
                   '${(percent * 100).toInt()}%',
-                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Color(0xFF4F46E5)),
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                    color: isDone ? Colors.green : const Color(0xFF4F46E5),
+                  ),
                 ),
               ],
             ),
@@ -230,20 +278,28 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF1E293B)),
                   ),
                   const SizedBox(height: 4),
-                  const Text(
-                    'Đã học 10/15 phút • Đạt 3/5 câu nói',
-                    style: TextStyle(color: Colors.grey, fontSize: 13),
+                  Text(
+                    'Đã học $practicedMinutes/$targetMinutes phút • Đạt $practicedSentences/$targetSentences câu nói',
+                    style: const TextStyle(color: Colors.grey, fontSize: 13),
                   ),
                   const SizedBox(height: 8),
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                     decoration: BoxDecoration(
-                      color: Colors.green.withOpacity(0.12),
+                      color: (isDone ? Colors.green : Colors.indigo).withOpacity(0.12),
                       borderRadius: BorderRadius.circular(8),
                     ),
-                    child: const Text(
-                      '🔥 Giữ vững chuỗi streak để duy trì kỷ luật!',
-                      style: TextStyle(color: Colors.green, fontSize: 12, fontWeight: FontWeight.bold),
+                    child: Text(
+                      isDone
+                          ? '🎉 Chúc mừng! Bạn đã hoàn thành xuất sắc mục tiêu hôm nay!'
+                          : (practicedSentences > 0
+                              ? '🔥 Tiếp tục phát huy! Hãy hoàn thành $targetSentences câu để bảo toàn kỷ luật!'
+                              : '💡 Bạn chưa luyện câu nào hôm nay. Hãy bắt đầu ngay để kích hoạt Streak!'),
+                      style: TextStyle(
+                        color: isDone ? Colors.green : const Color(0xFF4F46E5),
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                   ),
                 ],
@@ -256,6 +312,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Widget _buildStudyChartCard() {
+    final totalMinutes = _weeklyMinutes.fold(0.0, (sum, m) => sum + m);
+    final now = DateTime.now();
+    final todayIndex = now.weekday - 1; // 0: Thứ 2 -> 6: Chủ nhật
+    final maxVal = _weeklyMinutes.isEmpty ? 10.0 : _weeklyMinutes.reduce(max);
+    final maxY = max(10.0, (maxVal + 5).ceilToDouble());
+
     return Card(
       elevation: 2,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
@@ -264,14 +326,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Row(
+            Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(
+                const Text(
                   'Thống Kê Thời Gian Học 7 Ngày (Phút)',
                   style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF1E293B)),
                 ),
-                Text('Tổng: 85 phút', style: TextStyle(color: Color(0xFF4F46E5), fontWeight: FontWeight.bold)),
+                Text(
+                  'Tổng: ${totalMinutes.toStringAsFixed(1)} phút',
+                  style: const TextStyle(color: Color(0xFF4F46E5), fontWeight: FontWeight.bold),
+                ),
               ],
             ),
             const SizedBox(height: 24),
@@ -280,7 +345,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               child: BarChart(
                 BarChartData(
                   alignment: BarChartAlignment.spaceAround,
-                  maxY: 30,
+                  maxY: maxY,
                   barTouchData: BarTouchData(enabled: true),
                   titlesData: FlTitlesData(
                     show: true,
@@ -290,7 +355,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         getTitlesWidget: (val, meta) {
                           const days = ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'];
                           if (val.toInt() >= 0 && val.toInt() < days.length) {
-                            return Text(days[val.toInt()], style: const TextStyle(fontSize: 11, color: Colors.grey));
+                            final isToday = val.toInt() == todayIndex;
+                            return Text(
+                              days[val.toInt()],
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: isToday ? FontWeight.bold : FontWeight.normal,
+                                color: isToday ? const Color(0xFFF59E0B) : Colors.grey,
+                              ),
+                            );
                           }
                           return const SizedBox();
                         },
@@ -302,15 +375,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   ),
                   gridData: const FlGridData(show: false),
                   borderData: FlBorderData(show: false),
-                  barGroups: [
-                    _makeBarGroup(0, 12),
-                    _makeBarGroup(1, 15),
-                    _makeBarGroup(2, 20),
-                    _makeBarGroup(3, 10),
-                    _makeBarGroup(4, 18),
-                    _makeBarGroup(5, 10),
-                    _makeBarGroup(6, 15, isToday: true),
-                  ],
+                  barGroups: List.generate(7, (i) {
+                    final isToday = (i == todayIndex);
+                    return _makeBarGroup(i, _weeklyMinutes[i], isToday: isToday);
+                  }),
                 ),
               ),
             ),
