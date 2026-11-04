@@ -178,26 +178,46 @@ async def websocket_audio_stream(websocket: WebSocket):
         is_transcribing = True
         try:
             audio_np = np.frombuffer(buffer_snapshot, dtype=np.int16).astype(np.float32) / 32768.0
-            rms = float(np.sqrt(np.mean(audio_np ** 2)))
-            if rms < 0.005:
-                # Âm thanh quá nhỏ / im lặng / tiếng thở -> Bỏ qua để không sinh ra ảo giác "Oh, hello."
+            total_rms = float(np.sqrt(np.mean(audio_np ** 2)))
+            
+            # Lọc tạp âm nền: Nếu toàn bộ âm thanh chưa vượt qua 0.012 (nhiễu phòng/quạt), bỏ qua
+            if total_rms < 0.012:
+                return
+            
+            # Kiểm tra 1 giây gần nhất:
+            recent_samples = int(16000 * 1.0)
+            recent_slice = audio_np[-recent_samples:] if len(audio_np) > recent_samples else audio_np
+            recent_rms = float(np.sqrt(np.mean(recent_slice ** 2)))
+            if recent_rms < 0.010 and last_interim_text:
+                # Đang im lặng tạm thời sau khi đã nhận diện được từ -> Không cần gọi lại Whisper
                 return
             
             def _run():
                 model = get_whisper_model()
-                # Nhận diện TOÀN BỘ từ đầu đến hiện tại để tích lũy câu dài (abc -> abc bcd ...)
+                # Định hướng ngữ cảnh bài học bằng target_sentence để nhận diện chính xác 100%
+                lesson_prompt = (
+                    f"English pronunciation practice: {target_sentence}. "
+                    "Numbers as words: one, two, three, four, five, six, seven, eight, nine, ten."
+                ) if target_sentence else WORDS_PROMPT
+                
                 segments, _ = model.transcribe(
                     audio_np,
-                    beam_size=1,
+                    beam_size=2,
                     language="en",
                     without_timestamps=True,
-                    vad_filter=False,
-                    initial_prompt=WORDS_PROMPT,
+                    vad_filter=True, # BẬT VAD ĐỂ LỌC TIẾNG ỒN VÀ TIẾNG THỞ
+                    vad_parameters=dict(
+                        threshold=0.5,
+                        min_speech_duration_ms=200,
+                        min_silence_duration_ms=400,
+                        speech_pad_ms=100
+                    ),
+                    initial_prompt=lesson_prompt,
                     condition_on_previous_text=False,
-                    no_speech_threshold=0.5
+                    no_speech_threshold=0.6
                 )
                 raw = " ".join([s.text for s in segments]).strip()
-                if is_hallucination(raw):
+                if not raw or is_hallucination(raw):
                     return ""
                 norm = normalize_text_for_phonemes(raw)
                 if is_hallucination(norm):
@@ -205,7 +225,7 @@ async def websocket_audio_stream(websocket: WebSocket):
                 return norm
             
             interim_text = await asyncio.to_thread(_run)
-            if interim_text:
+            if interim_text and not is_hallucination(interim_text):
                 print(f"[WebSocket Live]: '{interim_text}'")
                 last_interim_text = interim_text
                 await websocket.send_json({
@@ -260,17 +280,27 @@ async def websocket_audio_stream(websocket: WebSocket):
         try:
             audio_np = np.frombuffer(pcm_buffer, dtype=np.int16).astype(np.float32) / 32768.0
             rms = float(np.sqrt(np.mean(audio_np ** 2)))
-            if rms >= 0.005:
+            if rms >= 0.012:
                 def _final_run():
                     model = get_whisper_model()
+                    lesson_prompt = (
+                        f"English pronunciation practice: {target_sentence}. "
+                        "Numbers as words: one, two, three, four, five, six, seven, eight, nine, ten."
+                    ) if target_sentence else WORDS_PROMPT
                     segments, _ = model.transcribe(
                         audio_np,
                         beam_size=3,
                         language="en",
                         vad_filter=True,
-                        initial_prompt=WORDS_PROMPT,
+                        vad_parameters=dict(
+                            threshold=0.5,
+                            min_speech_duration_ms=200,
+                            min_silence_duration_ms=400,
+                            speech_pad_ms=100
+                        ),
+                        initial_prompt=lesson_prompt,
                         condition_on_previous_text=False,
-                        no_speech_threshold=0.5
+                        no_speech_threshold=0.6
                     )
                     raw = " ".join([s.text for s in segments]).strip()
                     if is_hallucination(raw):
@@ -285,18 +315,30 @@ async def websocket_audio_stream(websocket: WebSocket):
         if last_interim_text and not is_hallucination(last_interim_text):
             final_text = normalize_text_for_phonemes(last_interim_text)
             
-    if not final_text:
-        final_text = "..."
-        
     print(f"[WebSocket Final Result]: '{final_text}'")
-    eval_req = TextAnalyzeRequest(
-        target_sentence=target_sentence,
-        spoken_text=final_text,
-        firebase_uid=firebase_uid,
-        lesson_id=lesson_id
-    )
-    final_eval = analyze_text(eval_req)
-    final_eval["spoken_text"] = final_text
+    
+    if not final_text or is_hallucination(final_text):
+        final_eval = {
+            "overall_score": 0.0,
+            "accuracy_score": 0.0,
+            "fluency_score": 0.0,
+            "completeness_score": 0.0,
+            "recognized_text": "(Chưa nghe thấy giọng nói)",
+            "spoken_text": "(Chưa nghe thấy giọng nói)",
+            "ai_feedback": "AI chưa nghe thấy bạn nói gì hoặc âm lượng Micro quá nhỏ. Hãy kiểm tra Micro và thử nói to, rõ hơn nhé!",
+            "ai_feedback_text": "AI chưa nghe thấy bạn nói gì hoặc âm lượng Micro quá nhỏ. Hãy kiểm tra Micro và thử nói to, rõ hơn nhé!",
+            "error_type": "Chưa có giọng nói",
+            "words": []
+        }
+    else:
+        eval_req = TextAnalyzeRequest(
+            target_sentence=target_sentence,
+            spoken_text=final_text,
+            firebase_uid=firebase_uid,
+            lesson_id=lesson_id
+        )
+        final_eval = analyze_text(eval_req)
+        final_eval["spoken_text"] = final_text
     
     try:
         await websocket.send_json({

@@ -21,6 +21,7 @@ external void _startRealtimeMic(
   JSFunction onInterim,
   JSFunction onFinal,
   JSFunction onError,
+  JSFunction onVolume,
 );
 
 @JS('stopRealtimeMic')
@@ -82,6 +83,7 @@ class _PracticeScreenState extends State<PracticeScreen> {
     setState(() {
       _isRecording = true;
       _recordingSeconds = 0;
+      _amplitude = 0.0;
       _liveTranscript = 'Đang lắng nghe... Hãy nói vào Micro';
     });
 
@@ -90,18 +92,17 @@ class _PracticeScreenState extends State<PracticeScreen> {
       if (mounted) setState(() => _recordingSeconds++);
     });
 
-    // Mô phỏng dao động sóng âm khi micro đang mở
-    _ampTimer = Timer.periodic(const Duration(milliseconds: 150), (t) {
-      if (!_isRecording) return;
-      if (mounted) {
-        setState(() {
-          _amplitude = (_recordingSeconds % 2 == 0) ? 36.0 : 16.0;
-        });
-      }
-    });
-
     if (_selectedAccentMode == 'Mic Thật (Real Mic)') {
       _finalResultCompleter = Completer<PronunciationResult>();
+
+      // Callback nhận biên độ âm lượng thực tế từ Micro (khi im lặng = 0, khi nói nảy lên)
+      final onVolumeJS = ((JSNumber vol) {
+        if (mounted && _isRecording) {
+          setState(() {
+            _amplitude = vol.toDartDouble;
+          });
+        }
+      }).toJS;
 
       // Callback nhận chữ thời gian thực (Interim ASR từ Faster-Whisper)
       final onInterimJS = ((JSString text) {
@@ -138,6 +139,7 @@ class _PracticeScreenState extends State<PracticeScreen> {
           onInterimJS,
           onFinalJS,
           onErrorJS,
+          onVolumeJS,
         );
       } catch (e) {
         debugPrint('[Practice] Lỗi gọi _startRealtimeMic: $e');
@@ -294,6 +296,20 @@ class _PracticeScreenState extends State<PracticeScreen> {
       _liveTranscript = recognizedText;
       _isAnalyzing = false;
     });
+
+    // Nếu không có tiếng nói vào mic (người dùng im lặng)
+    if (recognizedText.contains('Chưa nghe thấy') || recognizedText == '...' || evalResult.words.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('⚠️ AI chưa nghe thấy giọng nói của bạn. Hãy kiểm tra Micro và nói to, rõ ràng hơn nhé!'),
+            backgroundColor: Colors.orange,
+            duration: Duration(seconds: 4),
+          ),
+        );
+      }
+      return;
+    }
 
     // Lưu kết quả vào Supabase và cập nhật Streak
     await _supabaseService.savePracticeHistory(

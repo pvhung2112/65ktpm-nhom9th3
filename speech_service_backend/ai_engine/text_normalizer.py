@@ -12,9 +12,10 @@ from num2words import num2words
 WHISPER_HALLUCINATIONS = {
     "oh, hello.", "oh, hello", "oh hello", "hello.", "hello",
     "thank you.", "thank you", "thank you for watching.", "thank you for watching",
+    "thank you very much.", "thank you so much.",
     "subtitles by", "subtitles by...", "subtitles by the amara.org community",
     "you", "bye.", "bye", "goodbye.", "...", ".", "yes.", "no.",
-    "so", "um", "uh", "ah"
+    "so", "um", "uh", "ah", "hmm"
 }
 
 def is_hallucination(text: str) -> bool:
@@ -22,11 +23,37 @@ def is_hallucination(text: str) -> bool:
     if not text:
         return True
     t_clean = text.lower().strip()
+    
+    # 1. Nếu chứa ký tự phi Latin (ví dụ tiếng Nga/Cyrillic 'волос', tiếng Trung, tiếng Ả Rập...) -> Ảo giác 100%
+    if re.search(r'[\u0400-\u04FF\u4E00-\u9FFF\u0600-\u06FF]', text):
+        return True
+        
     if t_clean in WHISPER_HALLUCINATIONS:
         return True
-    # Kiểm tra các cụm bắt đầu bằng subtitles by
-    if t_clean.startswith("subtitles by") or t_clean.startswith("thank you for"):
+        
+    # 2. Kiểm tra các câu kết video YouTube điển hình
+    hallucination_patterns = [
+        r"subtitles by",
+        r"thank you for",
+        r"so long thank you",
+        r"see you in the next",
+        r"next video",
+        r"don't be surprised",
+        r"subscribe to",
+        r"like and subscribe",
+        r"watching this video",
+        r"thank you.*thank you",  # Lặp từ do nhiễu
+        r"bye bye.*bye",
+    ]
+    for pattern in hallucination_patterns:
+        if re.search(pattern, t_clean):
+            return True
+            
+    # 3. Lặp 1 từ quá 3 lần liên tiếp do mô hình bị kẹt trong vòng lặp nhiễu (VD: "three three three three three")
+    words = t_clean.split()
+    if len(words) >= 4 and len(set(words)) == 1:
         return True
+        
     return False
 
 def normalize_text_for_phonemes(text: str) -> str:
