@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base href="$FLUTTER_BASE_HREF">
+
+  <meta charset="UTF-8">
+  <meta content="IE=Edge" http-equiv="X-UA-Compatible">
+  <meta name="description" content="Ứng dụng luyện phát âm tiếng Anh AI">
+
+  <!-- iOS meta tags & icons -->
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black">
+  <meta name="apple-mobile-web-app-title" content="englishth3">
+  <link rel="apple-touch-icon" href="icons/Icon-192.png">
+
+  <!-- Favicon -->
+  <link rel="icon" type="image/png" href="favicon.png"/>
+
+  <title>englishth3 - Luyện phát âm tiếng Anh AI</title>
+  <link rel="manifest" href="manifest.json">
+</head>
+<body>
+  <script>
+    window.realtimeAudioStreamer = {
+      ws: null,
+      audioCtx: null,
+      processor: null,
+      micStream: null,
+
+      start: function(targetSentence, firebaseUid, lessonId, onInterim, onFinal, onError) {
+        try {
+          var wsUrl = "ws://127.0.0.1:8000/ws/audio_stream";
+          var ws = new WebSocket(wsUrl);
+          window.realtimeAudioStreamer.ws = ws;
+
+          ws.onopen = function() {
+            console.log("[RealtimeAudio] WebSocket connected to backend!");
+            ws.send(JSON.stringify({
+              action: "start",
+              target_sentence: targetSentence,
+              firebase_uid: firebaseUid,
+              lesson_id: lessonId
+            }));
+
+            navigator.mediaDevices.getUserMedia({
+              audio: {
+                channelCount: 1,
+                sampleRate: 16000,
+                echoCancellation: true,
+                noiseSuppression: true
+              }
+            }).then(function(stream) {
+              window.realtimeAudioStreamer.micStream = stream;
+              var AudioCtx = window.AudioContext || window.webkitAudioContext;
+              var ctx = new AudioCtx({ sampleRate: 16000 });
+              window.realtimeAudioStreamer.audioCtx = ctx;
+
+              var source = ctx.createMediaStreamSource(stream);
+              console.log("[RealtimeAudio] Hardware sampleRate:", ctx.sampleRate);
+
+              function downsampleTo16k(input, inputSampleRate) {
+                if (inputSampleRate === 16000) {
+                  var pcm16 = new Int16Array(input.length);
+                  for (var i = 0; i < input.length; i++) {
+                    var s = Math.max(-1, Math.min(1, input[i]));
+                    pcm16[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+                  }
+                  return pcm16;
+                }
+                var ratio = inputSampleRate / 16000;
+                var newLength = Math.round(input.length / ratio);
+                var result = new Int16Array(newLength);
+                var offsetResult = 0;
+                var offsetBuffer = 0;
+                while (offsetResult < newLength) {
+                  var nextOffsetBuffer = Math.round((offsetResult + 1) * ratio);
+                  var accum = 0, count = 0;
+                  for (var i = offsetBuffer; i < nextOffsetBuffer && i < input.length; i++) {
+                    accum += input[i];
+                    count++;
+                  }
+                  var sample = count > 0 ? (accum / count) : 0;
+                  sample = Math.max(-1, Math.min(1, sample));
+                  result[offsetResult] = sample < 0 ? sample * 0x8000 : sample * 0x7FFF;
+                  offsetResult++;
+                  offsetBuffer = nextOffsetBuffer;
+                }
+                return result;
+              }
+
+              // Buffer 4096 samples per slice
+              var proc = ctx.createScriptProcessor(4096, 1, 1);
+              window.realtimeAudioStreamer.processor = proc;
+
+              proc.onaudioprocess = function(e) {
+                if (ws && ws.readyState === WebSocket.OPEN) {
+                  var channelData = e.inputBuffer.getChannelData(0);
+                  var pcm16 = downsampleTo16k(channelData, ctx.sampleRate);
+                  ws.send(pcm16.buffer);
+                }
+              };
+
+              source.connect(proc);
+              proc.connect(ctx.destination);
+              console.log("[RealtimeAudio] Direct PCM 16kHz audio stream active with resampler!");
+            }).catch(function(err) {
+              console.error("[RealtimeAudio] getUserMedia error:", err);
+              if (onError) onError(err.toString());
+            });
+          };
+
+          ws.onmessage = function(event) {
+            try {
+              var data = JSON.parse(event.data);
+              if (data.type === "interim" && onInterim) {
+                console.log("[RealtimeAudio Live interim]:", data.text);
+                onInterim(data.text);
+              } else if (data.type === "final" && onFinal) {
+                console.log("[RealtimeAudio Final result received]");
+                onFinal(JSON.stringify(data.result));
+              }
+            } catch (err) {
+              console.error("[RealtimeAudio] JSON parse error:", err);
+            }
+          };
+
+          ws.onerror = function(err) {
+            console.error("[RealtimeAudio] WebSocket error:", err);
+            if (onError) onError("WebSocket connection error");
+          };
+        } catch (e) {
+          console.error("[RealtimeAudio] start error:", e);
+          if (onError) onError(e.toString());
+        }
+      },
+
+      stop: function() {
+        try {
+          var s = window.realtimeAudioStreamer;
+          if (s.ws && s.ws.readyState === WebSocket.OPEN) {
+            s.ws.send(JSON.stringify({ action: "stop" }));
+          }
+          if (s.processor) {
+            s.processor.disconnect();
+            s.processor = null;
+          }
+          if (s.micStream) {
+            s.micStream.getTracks().forEach(function(t) { t.stop(); });
+            s.micStream = null;
+          }
+          if (s.audioCtx) {
+            s.audioCtx.close();
+            s.audioCtx = null;
+          }
+        } catch (e) {
+          console.error("[RealtimeAudio] stop error:", e);
+        }
+      }
+    };
+
+    window.startRealtimeMic = function(targetSentence, firebaseUid, lessonId, onInterim, onFinal, onError) {
+      window.realtimeAudioStreamer.start(targetSentence, firebaseUid, lessonId, onInterim, onFinal, onError);
+    };
+
+    window.stopRealtimeMic = function() {
+      window.realtimeAudioStreamer.stop();
+    };
+  </script>
+  <script src="flutter_bootstrap.js" async></script>
+</body>
+</html>
