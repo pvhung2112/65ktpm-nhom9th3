@@ -16,6 +16,7 @@ class _LoginScreenState extends State<LoginScreen> {
   final _nameCtrl = TextEditingController();
   bool _isSignUp = false;
   bool _isLoading = false;
+  bool _obscurePassword = true;
   String? _errorMessage;
 
   final AuthService _auth = AuthService();
@@ -126,10 +127,15 @@ class _LoginScreenState extends State<LoginScreen> {
 
                     TextField(
                       controller: _passCtrl,
-                      obscureText: true,
+                      obscureText: _obscurePassword,
                       decoration: InputDecoration(
                         labelText: 'Mật khẩu',
                         prefixIcon: const Icon(Icons.lock),
+                        suffixIcon: IconButton(
+                          icon: Icon(_obscurePassword ? Icons.visibility_off : Icons.visibility),
+                          onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
+                          tooltip: _obscurePassword ? 'Hiện mật khẩu' : 'Ẩn mật khẩu',
+                        ),
                         border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                       ),
                     ),

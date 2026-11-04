@@ -29,11 +29,16 @@ class AuthService extends ChangeNotifier {
       notifyListeners();
       return null;
     } on FirebaseAuthException catch (e) {
-      if (e.code == 'user-not-found') {
+      final code = e.code.toLowerCase();
+      final msg = (e.message ?? '').toLowerCase();
+      if (code.contains('user-not-found')) {
         return 'Tài khoản không tồn tại. Vui lòng bấm "Chưa có tài khoản? Đăng ký mới" bên dưới!';
-      } else if (e.code == 'wrong-password' || e.code == 'invalid-credential') {
-        return 'Mật khẩu không chính xác hoặc thông tin đăng nhập không hợp lệ!';
-      } else if (e.code == 'invalid-email') {
+      } else if (code.contains('wrong-password') ||
+          code.contains('invalid-credential') ||
+          msg.contains('credential') ||
+          msg.contains('password')) {
+        return 'Mật khẩu không chính xác! Mật khẩu mẫu là "123456". Hãy bấm icon con mắt để kiểm tra xem bạn có gõ nhầm không, hoặc bấm "Đăng ký mới" bên dưới.';
+      } else if (code.contains('invalid-email')) {
         return 'Định dạng email không hợp lệ!';
       }
       return e.message ?? 'Đăng nhập thất bại';

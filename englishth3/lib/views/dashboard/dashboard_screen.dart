@@ -10,6 +10,7 @@ import '../../services/supabase_service.dart';
 import '../../widgets/score_circle.dart';
 import '../practice/practice_screen.dart';
 import '../test_lab/testing_lab_screen.dart';
+import '../../services/tts_service.dart';
 
 class DashboardScreen extends StatefulWidget {
   final VoidCallback onLogout;
@@ -36,6 +37,41 @@ class _DashboardScreenState extends State<DashboardScreen> {
   };
   List<double> _weeklyMinutes = List.filled(7, 0.0);
   bool _isLoading = true;
+
+  // Trạng thái Tìm kiếm, Bộ lọc Danh mục & Phân trang
+  String _searchQuery = '';
+  String _selectedCategory = 'Tất cả';
+  int _currentPage = 0;
+  static const int _pageSize = 6; // Mỗi trang hiển thị 6 từ/câu ngắn
+
+  List<String> get _categories {
+    final cats = {'Tất cả'};
+    for (var l in _lessons) {
+      if (l.category.isNotEmpty) cats.add(l.category);
+    }
+    return cats.toList();
+  }
+
+  List<Lesson> get _filteredLessons {
+    return _lessons.where((l) {
+      final matchCat = _selectedCategory == 'Tất cả' || l.category == _selectedCategory;
+      final q = _searchQuery.toLowerCase().trim();
+      final matchQuery = q.isEmpty ||
+          l.targetSentence.toLowerCase().contains(q) ||
+          l.title.toLowerCase().contains(q) ||
+          l.category.toLowerCase().contains(q);
+      return matchCat && matchQuery;
+    }).toList();
+  }
+
+  int get _totalPages => max(1, (_filteredLessons.length / _pageSize).ceil());
+
+  List<Lesson> get _pagedLessons {
+    final list = _filteredLessons;
+    final start = _currentPage * _pageSize;
+    if (start >= list.length) return [];
+    return list.sublist(start, min(start + _pageSize, list.length));
+  }
 
   @override
   void initState() {
@@ -73,10 +109,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   void _triggerReminderTest() {
+    final curStreak = _profile?.currentStreak ?? 0;
     _notifications.showStreakReminder(
-      currentStreak: _profile?.currentStreak ?? 1,
+      currentStreak: curStreak,
       title: '⏰ Đã đến giờ luyện nói tiếng Anh!',
-      body: 'Giữ vững chuỗi ${_profile?.currentStreak ?? 1} ngày streak rực lửa của bạn nhé! 🔥',
+      body: curStreak > 0
+          ? 'Giữ vững chuỗi $curStreak ngày streak rực lửa của bạn nhé! 🔥'
+          : 'Hãy bắt đầu luyện nói ngay hôm nay để thắp sáng chuỗi streak đầu tiên! 🔥',
     );
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
@@ -94,7 +133,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       );
     }
 
-    final streak = _profile?.currentStreak ?? 1;
+    final streak = _profile?.currentStreak ?? 0;
 
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
@@ -163,32 +202,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 _buildStudyChartCard(),
                 const SizedBox(height: 28),
 
-                // Danh sách bài học phát âm
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text(
-                      'Ngân Hàng Câu Luyện Phát Âm AI',
-                      style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Color(0xFF1E293B)),
-                    ),
-                    Text(
-                      '${_lessons.length} bài học',
-                      style: const TextStyle(color: Colors.grey, fontWeight: FontWeight.w600),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 14),
-
-                ListView.builder(
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  itemCount: _lessons.length,
-                  itemBuilder: (context, idx) {
-                    final lesson = _lessons[idx];
-                    return _buildLessonCard(lesson);
-                  },
-                ),
-                const SizedBox(height: 28),
+                // Khu vực Ngân hàng Từ vựng (Tìm kiếm, Bộ lọc & Lưới thẻ phân trang)
+                _buildLessonSection(),
+                const SizedBox(height: 32),
 
                 // Lịch sử luyện tập gần đây (Lưu Supabase)
                 const Text(
@@ -402,58 +418,270 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  Widget _buildLessonCard(Lesson lesson) {
-    return Card(
-      margin: const EdgeInsets.only(bottom: 12),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      child: ListTile(
-        contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-        leading: CircleAvatar(
-          backgroundColor: const Color(0xFF4F46E5).withOpacity(0.1),
-          child: const Icon(Icons.mic, color: Color(0xFF4F46E5)),
-        ),
-        title: Text(
-          lesson.targetSentence,
-          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-        ),
-        subtitle: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+  Widget _buildLessonSection() {
+    final filtered = _filteredLessons;
+    final paged = _pagedLessons;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            const SizedBox(height: 4),
-            Text(lesson.standardIpa, style: const TextStyle(fontFamily: 'monospace', color: Colors.indigo)),
-            const SizedBox(height: 4),
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                  decoration: BoxDecoration(color: Colors.grey.withOpacity(0.15), borderRadius: BorderRadius.circular(6)),
-                  child: Text(lesson.category, style: const TextStyle(fontSize: 11)),
-                ),
-                const SizedBox(width: 8),
-                Text('Âm: ${lesson.targetFocusPhonemes}', style: const TextStyle(fontSize: 11, color: Colors.orange, fontWeight: FontWeight.bold)),
-              ],
+            const Text(
+              'Ngân Hàng Từ & Câu Luyện Phát Âm',
+              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Color(0xFF1E293B)),
+            ),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              decoration: BoxDecoration(
+                color: Colors.indigo.withOpacity(0.08),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Text(
+                '${filtered.length} bài học',
+                style: const TextStyle(color: Color(0xFF4F46E5), fontWeight: FontWeight.bold, fontSize: 13),
+              ),
             ),
           ],
         ),
-        trailing: ElevatedButton(
-          onPressed: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) => PracticeScreen(
-                  lesson: lesson,
-                  profile: _profile!,
-                  onStreakUpdated: (updated) => setState(() => _profile = updated),
+        const SizedBox(height: 14),
+
+        // 1. Ô Tìm Kiếm tức thì (Search Bar)
+        TextField(
+          onChanged: (val) {
+            setState(() {
+              _searchQuery = val;
+              _currentPage = 0; // reset về trang 1
+            });
+          },
+          decoration: InputDecoration(
+            hintText: '🔍 Tìm kiếm từ hoặc câu ngắn (VD: hi, hello, hungry, coffee...)',
+            filled: true,
+            fillColor: Colors.white,
+            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(14),
+              borderSide: BorderSide(color: Colors.grey.withOpacity(0.2)),
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(14),
+              borderSide: BorderSide(color: Colors.grey.withOpacity(0.2)),
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+
+        // 2. Bộ lọc theo Danh mục (Category Filter Pills)
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(
+            children: _categories.map((cat) {
+              final isSelected = _selectedCategory == cat;
+              return Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: FilterChip(
+                  selected: isSelected,
+                  label: Text(cat),
+                  labelStyle: TextStyle(
+                    color: isSelected ? Colors.white : const Color(0xFF1E293B),
+                    fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                    fontSize: 12,
+                  ),
+                  selectedColor: const Color(0xFF4F46E5),
+                  backgroundColor: Colors.white,
+                  checkmarkColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(20),
+                    side: BorderSide(
+                      color: isSelected ? const Color(0xFF4F46E5) : Colors.grey.withOpacity(0.25),
+                    ),
+                  ),
+                  onSelected: (selected) {
+                    setState(() {
+                      _selectedCategory = cat;
+                      _currentPage = 0;
+                    });
+                  },
+                ),
+              );
+            }).toList(),
+          ),
+        ),
+        const SizedBox(height: 16),
+
+        // 3. Grid Lưới thẻ bài học (2 hoặc 3 cột tùy độ rộng màn hình)
+        if (paged.isEmpty)
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(32),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: const Center(
+              child: Text(
+                'Không tìm thấy từ nào phù hợp với tìm kiếm của bạn!',
+                style: TextStyle(color: Colors.grey),
+              ),
+            ),
+          )
+        else
+          LayoutBuilder(
+            builder: (ctx, constraints) {
+              final isWide = constraints.maxWidth > 650;
+              return GridView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: paged.length,
+                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: isWide ? 3 : 2,
+                  crossAxisSpacing: 14,
+                  mainAxisSpacing: 14,
+                  mainAxisExtent: 195,
+                ),
+                itemBuilder: (ctx, i) => _buildLessonGridCard(paged[i]),
+              );
+            },
+          ),
+        const SizedBox(height: 14),
+
+        // 4. Thanh điều khiển Phân Trang (Pagination Control)
+        if (_totalPages > 1)
+          Container(
+            padding: const EdgeInsets.symmetric(vertical: 4),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.arrow_back_ios_new, size: 16),
+                  onPressed: _currentPage > 0
+                      ? () => setState(() => _currentPage--)
+                      : null,
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  'Trang ${_currentPage + 1} / $_totalPages  (${filtered.length} từ)',
+                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Color(0xFF1E293B)),
+                ),
+                const SizedBox(width: 8),
+                IconButton(
+                  icon: const Icon(Icons.arrow_forward_ios, size: 16),
+                  onPressed: _currentPage < _totalPages - 1
+                      ? () => setState(() => _currentPage++)
+                      : null,
+                ),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _buildLessonGridCard(Lesson lesson) {
+    return Card(
+      elevation: 2,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            // Header: Category Tag & Nút Loa TTS
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF4F46E5).withOpacity(0.08),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    lesson.category,
+                    style: const TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF4F46E5),
+                    ),
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.volume_up, color: Color(0xFF4F46E5), size: 20),
+                  tooltip: 'Nghe phát âm bản xứ',
+                  onPressed: () {
+                    TtsService().speakNative(lesson.targetSentence);
+                  },
+                ),
+              ],
+            ),
+
+            // Target Text (To, rõ ràng)
+            Text(
+              lesson.targetSentence,
+              style: const TextStyle(
+                fontSize: 17,
+                fontWeight: FontWeight.bold,
+                color: Color(0xFF1E293B),
+              ),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+
+            // IPA & Focus Phonemes
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  lesson.standardIpa,
+                  style: const TextStyle(
+                    fontFamily: 'monospace',
+                    fontSize: 12,
+                    color: Colors.indigo,
+                    fontWeight: FontWeight.w600,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  'Âm: ${lesson.targetFocusPhonemes}',
+                  style: const TextStyle(fontSize: 11, color: Colors.orange, fontWeight: FontWeight.bold),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+
+            // Nút Luyện nói
+            SizedBox(
+              width: double.infinity,
+              height: 36,
+              child: ElevatedButton.icon(
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => PracticeScreen(
+                        lesson: lesson,
+                        profile: _profile!,
+                        onStreakUpdated: (updated) => setState(() => _profile = updated),
+                      ),
+                    ),
+                  ).then((_) => _loadData());
+                },
+                icon: const Icon(Icons.mic, size: 16),
+                label: const Text('Luyện nói ngay', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF4F46E5),
+                  foregroundColor: Colors.white,
+                  elevation: 0,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                 ),
               ),
-            ).then((_) => _loadData());
-          },
-          style: ElevatedButton.styleFrom(
-            backgroundColor: const Color(0xFF4F46E5),
-            foregroundColor: Colors.white,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          ),
-          child: const Text('Luyện nói'),
+            ),
+          ],
         ),
       ),
     );
