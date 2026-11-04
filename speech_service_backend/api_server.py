@@ -194,12 +194,7 @@ async def websocket_audio_stream(websocket: WebSocket):
             
             def _run():
                 model = get_whisper_model()
-                # Định hướng ngữ cảnh bài học bằng target_sentence để nhận diện chính xác 100%
-                lesson_prompt = (
-                    f"English pronunciation practice: {target_sentence}. "
-                    "Numbers as words: one, two, three, four, five, six, seven, eight, nine, ten."
-                ) if target_sentence else WORDS_PROMPT
-                
+                # Không đưa câu mẫu vào prompt để AI chỉ nhận diện đúng 100% âm thanh thực tế người dùng nói
                 segments, _ = model.transcribe(
                     audio_np,
                     beam_size=2,
@@ -212,7 +207,9 @@ async def websocket_audio_stream(websocket: WebSocket):
                         min_silence_duration_ms=400,
                         speech_pad_ms=100
                     ),
-                    initial_prompt=lesson_prompt,
+                    initial_prompt=None,
+                    repetition_penalty=1.2,
+                    no_repeat_ngram_size=3,
                     condition_on_previous_text=False,
                     no_speech_threshold=0.6
                 )
@@ -283,10 +280,6 @@ async def websocket_audio_stream(websocket: WebSocket):
             if rms >= 0.012:
                 def _final_run():
                     model = get_whisper_model()
-                    lesson_prompt = (
-                        f"English pronunciation practice: {target_sentence}. "
-                        "Numbers as words: one, two, three, four, five, six, seven, eight, nine, ten."
-                    ) if target_sentence else WORDS_PROMPT
                     segments, _ = model.transcribe(
                         audio_np,
                         beam_size=3,
@@ -298,7 +291,9 @@ async def websocket_audio_stream(websocket: WebSocket):
                             min_silence_duration_ms=400,
                             speech_pad_ms=100
                         ),
-                        initial_prompt=lesson_prompt,
+                        initial_prompt=None,
+                        repetition_penalty=1.2,
+                        no_repeat_ngram_size=3,
                         condition_on_previous_text=False,
                         no_speech_threshold=0.6
                     )
