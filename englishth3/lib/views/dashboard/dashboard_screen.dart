@@ -29,8 +29,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
   UserProfile? _profile;
   List<Lesson> _lessons = [];
   List<PracticeHistory> _histories = [];
-  Map<String, int> _todayGoal = {
-    'practiced_minutes': 0,
+  Map<String, num> _todayGoal = {
+    'practiced_minutes': 0.0,
     'target_minutes': 15,
     'practiced_sentences': 0,
     'target_sentences': 5,
@@ -245,10 +245,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Widget _buildDailyGoalCard() {
-    final practicedMinutes = _todayGoal['practiced_minutes'] ?? 0;
-    final targetMinutes = _todayGoal['target_minutes'] ?? 15;
-    final practicedSentences = _todayGoal['practiced_sentences'] ?? 0;
-    final targetSentences = _todayGoal['target_sentences'] ?? 5;
+    final practicedMinutes = (_todayGoal['practiced_minutes'] ?? 0.0).toDouble();
+    final targetMinutes = (_todayGoal['target_minutes'] ?? 15.0).toDouble();
+    final practicedSentences = (_todayGoal['practiced_sentences'] ?? 0).toInt();
+    final targetSentences = (_todayGoal['target_sentences'] ?? 5).toInt();
     final percent = targetMinutes > 0 ? (practicedMinutes / targetMinutes).clamp(0.0, 1.0) : 0.0;
     final isDone = practicedSentences >= targetSentences && practicedMinutes >= targetMinutes;
 
@@ -268,7 +268,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   child: CircularProgressIndicator(
                     value: percent,
                     strokeWidth: 7,
-                    backgroundColor: Colors.indigo.withOpacity(0.1),
+                    backgroundColor: Colors.indigo.withValues(alpha: 0.1),
                     valueColor: AlwaysStoppedAnimation<Color>(
                       isDone ? Colors.green : const Color(0xFF4F46E5),
                     ),
@@ -295,22 +295,24 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    'Đã học $practicedMinutes/$targetMinutes phút • Đạt $practicedSentences/$targetSentences câu nói',
+                    'Đã học ${practicedMinutes.toStringAsFixed(1)}/${targetMinutes.toInt()} phút • Đạt $practicedSentences/$targetSentences câu chuẩn (>= 80đ)',
                     style: const TextStyle(color: Colors.grey, fontSize: 13),
                   ),
                   const SizedBox(height: 8),
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                     decoration: BoxDecoration(
-                      color: (isDone ? Colors.green : Colors.indigo).withOpacity(0.12),
+                      color: (isDone ? Colors.green : Colors.indigo).withValues(alpha: 0.12),
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: Text(
                       isDone
                           ? '🎉 Chúc mừng! Bạn đã hoàn thành xuất sắc mục tiêu hôm nay!'
-                          : (practicedSentences > 0
-                              ? '🔥 Tiếp tục phát huy! Hãy hoàn thành $targetSentences câu để bảo toàn kỷ luật!'
-                              : '💡 Bạn chưa luyện câu nào hôm nay. Hãy bắt đầu ngay để kích hoạt Streak!'),
+                          : (practicedSentences >= targetSentences
+                              ? '🔥 Đã đạt $practicedSentences/$targetSentences câu chuẩn (>= 80đ)! Hãy luyện thêm ${(targetMinutes - practicedMinutes).clamp(0.1, targetMinutes).toStringAsFixed(1)} phút nữa để đạt 100% mục tiêu ngày!'
+                              : (practicedSentences > 0
+                                  ? '🔥 Tiếp tục phát huy! Cần thêm ${targetSentences - practicedSentences} câu đạt chuẩn (>= 80đ) để hoàn thành mục tiêu!'
+                                  : '💡 Bạn chưa có câu đạt chuẩn nào hôm nay. Hãy bắt đầu luyện nói ngay để kích hoạt Streak!')),
                       style: TextStyle(
                         color: isDone ? Colors.green : const Color(0xFF4F46E5),
                         fontSize: 12,

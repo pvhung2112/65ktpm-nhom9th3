@@ -269,30 +269,71 @@ class SupabaseService {
     }
   }
 
-  /// Lấy tiến độ mục tiêu hôm nay từ bảng daily_goals
-  Future<Map<String, int>> getTodayGoal(String uid, {int defaultTargetMinutes = 15, int defaultTargetSentences = 5}) async {
-    final todayStr = DateTime.now().toIso8601String().split('T').first;
+  /// Lấy tiến độ mục tiêu hôm nay (tính chính xác đồng bộ 100% từ practice_histories)
+  Future<Map<String, num>> getTodayGoal(String uid, {int defaultTargetMinutes = 15, int defaultTargetSentences = 5}) async {
+    final now = DateTime.now();
+    final todayStr = DateTime(now.year, now.month, now.day).toIso8601String().split('T').first;
+
     try {
+      // 1. Truy vấn toàn bộ lịch sử luyện tập của HÔM NAY
       final res = await _client
+          .from('practice_histories')
+          .select('duration_seconds, overall_score')
+          .eq('firebase_uid', uid)
+          .gte('practiced_at', todayStr);
+
+      double totalMinutes = 0.0;
+      int passedSentences = 0; // Chỉ tính các câu phát âm đạt chuẩn (>= 80 điểm)
+
+      for (var row in (res as List)) {
+        final sec = (row['duration_seconds'] as num?)?.toDouble() ?? 0.0;
+        final score = (row['overall_score'] as num?)?.toDouble() ?? 0.0;
+        totalMinutes += (sec / 60.0);
+        if (score >= 80.0) {
+          passedSentences++;
+        }
+      }
+
+      totalMinutes = double.parse(totalMinutes.toStringAsFixed(1));
+
+      // 2. Cập nhật đồng bộ vào bảng daily_goals
+      final isCompleted = passedSentences >= defaultTargetSentences && totalMinutes >= defaultTargetMinutes;
+      final existingGoal = await _client
           .from('daily_goals')
-          .select()
+          .select('id')
           .eq('firebase_uid', uid)
           .eq('goal_date', todayStr)
           .maybeSingle();
 
-      if (res != null) {
-        return {
-          'practiced_minutes': (res['practiced_minutes'] as num?)?.toInt() ?? 0,
-          'target_minutes': (res['target_minutes'] as num?)?.toInt() ?? defaultTargetMinutes,
-          'practiced_sentences': (res['practiced_sentences'] as num?)?.toInt() ?? 0,
-          'target_sentences': (res['target_sentences'] as num?)?.toInt() ?? defaultTargetSentences,
-        };
+      if (existingGoal != null) {
+        await _client.from('daily_goals').update({
+          'practiced_sentences': passedSentences,
+          'practiced_minutes': totalMinutes.round(),
+          'is_completed': isCompleted,
+        }).eq('id', existingGoal['id']);
+      } else {
+        await _client.from('daily_goals').insert({
+          'firebase_uid': uid,
+          'goal_date': todayStr,
+          'practiced_sentences': passedSentences,
+          'practiced_minutes': totalMinutes.round(),
+          'target_sentences': defaultTargetSentences,
+          'target_minutes': defaultTargetMinutes,
+          'is_completed': isCompleted,
+        });
       }
+
+      return {
+        'practiced_minutes': totalMinutes,
+        'target_minutes': defaultTargetMinutes,
+        'practiced_sentences': passedSentences,
+        'target_sentences': defaultTargetSentences,
+      };
     } catch (e) {
       debugPrint('[Supabase] Lỗi getTodayGoal: $e');
     }
     return {
-      'practiced_minutes': 0,
+      'practiced_minutes': 0.0,
       'target_minutes': defaultTargetMinutes,
       'practiced_sentences': 0,
       'target_sentences': defaultTargetSentences,
@@ -414,36 +455,8 @@ class SupabaseService {
         'duration_seconds': durationSeconds,
       });
 
-      // Cập nhật tiến độ ngày vào daily_goals
-      final todayStr = DateTime.now().toIso8601String().split('T').first;
-      final existingGoal = await _client
-          .from('daily_goals')
-          .select()
-          .eq('firebase_uid', uid)
-          .eq('goal_date', todayStr)
-          .maybeSingle();
-
-      if (existingGoal != null) {
-        int curSentences = (existingGoal['practiced_sentences'] ?? 0) + 1;
-        int curMinutes = (existingGoal['practiced_minutes'] ?? 0) + (durationSeconds ~/ 60) + 1;
-        bool isDone = curSentences >= (existingGoal['target_sentences'] ?? 5);
-
-        await _client.from('daily_goals').update({
-          'practiced_sentences': curSentences,
-          'practiced_minutes': curMinutes,
-          'is_completed': isDone,
-        }).eq('id', existingGoal['id']);
-      } else {
-        await _client.from('daily_goals').insert({
-          'firebase_uid': uid,
-          'goal_date': todayStr,
-          'practiced_sentences': 1,
-          'practiced_minutes': 1,
-          'target_sentences': 5,
-          'target_minutes': 15,
-          'is_completed': false,
-        });
-      }
+      // Tự động tính toán lại số phút và số câu đạt chuẩn (>=80) hôm nay để đồng bộ daily_goals
+      await getTodayGoal(uid);
     } catch (e) {
       debugPrint('[Supabase] Lỗi lưu practice history: $e');
     }
